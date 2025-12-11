@@ -18,6 +18,9 @@ class DungeonGameManager {
     var playerHP: Int = 100
     var isDefending: Bool = false
     var healCooldown: Int = 0
+    var currentBackgroundImageURL: URL? // 背景圖
+    var currentEnemyImageURL: URL?      // 怪物圖
+    let imageFetcher = ImageFetcher()   // 圖片抓取器
     
     init() {
         let diceTool = DiceRollTool()
@@ -47,6 +50,8 @@ class DungeonGameManager {
             if let enemy = self.currentEnemy {
                             self.currentEnemyHP = enemy.hp
                             await performStoryUpdate(prompt: "描述玩家遭遇 \(enemy.name) 的情境，包含它的外觀 \(enemy.description)。")
+                            self.currentEnemyImageURL = await imageFetcher.fetchImageURL(query: enemy.imageKeyword)
+                            self.currentBackgroundImageURL = await imageFetcher.fetchImageURL(query: "dark dungeon background")
                         }
         } catch {
             print("生成怪物失敗: \(error)")

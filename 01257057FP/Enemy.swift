@@ -20,6 +20,6 @@ struct Enemy {
     @Guide(description: "怪物的攻擊力", .range(5...15))
     let attack: Int
     
-    @Guide(description: "怪物的弱點元素")
-    let weakness: String
+    @Guide(description: "用於搜尋圖片的英文關鍵字，例如 'fire dragon' 或 'goblin'")
+    let imageKeyword: String
 }
