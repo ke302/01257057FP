@@ -66,12 +66,12 @@ class DungeonGameManager {
                 - 世界背景: \(worldSetting)
                 - 故事目標: \(storyGoal)
         
-        【遊戲規則】
-                1. 遊戲開始時，請根據世界觀描述周圍環境，並說明角色的現狀。
-                2. 之後每次玩家輸入行動，請判斷結果並推進劇情。
-                3. 遇到戰鬥或機率事件，**必須**呼叫 'rollDice' tool。
-                4. 如果玩家死亡或達成最終目標，請明確告知遊戲結束。
-                5. 你的敘述要生動，讓玩家沉浸其中。
+        【重要規則】
+                1. **絕對不要重複已經發生過的劇情**。
+                2. **絕對不要重複「遊戲背景」或「開場環境」**，除非玩家回到了起點。
+                3. 每次回應**只描述**針對玩家最新行動的結果與後續發展。
+                4. 遇到戰鬥或機率事件，必須呼叫 'rollDice' tool。
+                5. 敘述要生動，但請直接切入重點。
         """
         
         self.session = LanguageModelSession(
@@ -96,7 +96,7 @@ class DungeonGameManager {
         self.storyText += playerLog
         
         // 讓 AI 回應
-        await performStoryUpdate(prompt: "玩家行動: \(input)。請判定結果並推進劇情。")
+        await performStoryUpdate(prompt: "玩家行動: \(input)。請直接判定結果並推進劇情，不需要前情提要，不要重複上一段話。")
     }
     
     // --- 3. 結束遊戲與評價 ---
@@ -159,6 +159,7 @@ class DungeonGameManager {
                 // 3. 組合：舊歷史 + 分隔線 + AI目前講的話
                 // [重要] 這裡是使用 `=` (賦值)，絕對不能用 `+=` (累加)
                 // partial.content 包含了 AI 這次回應的「完整片段」，所以我們直接接在歷史後面就好
+                print("AI 生成中: \(partial.content)")
                 self.storyText = baseHistory + separator + partial.content
             }
         } catch {
