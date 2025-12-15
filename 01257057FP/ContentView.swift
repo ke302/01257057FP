@@ -6,153 +6,130 @@
 //
 
 // ContentView.swift
+//
 import SwiftUI
 import FoundationModels
 import ConfettiSwiftUI
-import TipKit
-import CoreHaptics
 
-func playHaptic() {
-    let generator = UINotificationFeedbackGenerator()
-    generator.notificationOccurred(.success) // 震動一下
-}
-
-struct AttackTip: Tip {
-    var title: Text { Text("戰鬥提示") }
-    var message: Text? { Text("點擊攻擊按鈕，AI 將會幫你擲骰子判定傷害！") }
-    var image: Image? { Image(systemName: "dice.fill") }
+// 定義遊戲的三個階段
+enum GameState {
+    case creatingCharacter // 1. 創角
+    case settingWorld      // 2. 世界設定
+    case playing           // 3. 遊戲進行中
 }
 
 struct ContentView: View {
     @State private var gameManager = DungeonGameManager()
-    @State private var isGameStarted = false
-    @State private var confettiTrigger = 0 // 用來觸發撒花
+    @State private var gameState: GameState = .creatingCharacter
+    @State private var confettiTrigger = 0
     
     var body: some View {
-        ZStack {
-            // 狀態 1: 遊戲還沒開始 -> 顯示創建頁面
-            if !isGameStarted {
-                CharacterCreationView(isGameStarted: $isGameStarted)
-                    .transition(.move(edge: .leading)) // 轉場動畫
-            }
-            // 狀態 2: 遊戲進行中 -> 顯示主戰鬥畫面
-            else {
-                MainGameView(gameManager: gameManager, isGameStarted: $isGameStarted)
-                    .transition(.opacity)
-            }
-            
-            // 狀態 3 (特效層): 勝利撒花
-            if gameManager.isVictory {
-                ConfettiCannon(trigger: $confettiTrigger, num: 50, radius: 200)
+        NavigationStack {
+            switch gameState {
+            case .creatingCharacter:
+                CharacterCreationView(gameState: $gameState, gameManager: gameManager)
+                
+            case .settingWorld:
+                WorldSettingView(gameManager: gameManager, gameState: $gameState)
+                
+            case .playing:
+                MainGameView(gameManager: gameManager, gameState: $gameState)
             }
         }
-        .animation(.easeInOut, value: isGameStarted) // 讓畫面切換有滑順動畫
-        .task{
-            gameManager.session.prewarm()
-        }
-        .onChange(of: gameManager.isVictory) { _, newValue in
-            if newValue {
-                confettiTrigger += 1 // 當 isVictory 變成 true 時，觸發撒花
+        // 監聽評價視窗
+        .sheet(isPresented: $gameManager.showEvaluation) {
+            EvaluationView(report: gameManager.evaluationReport) {
+                // 關閉評價後，回到主選單或重置
+                gameState = .creatingCharacter
+                gameManager = DungeonGameManager() // 重置遊戲
             }
         }
     }
 }
-struct MainGameView: View {
-    @Bindable var gameManager: DungeonGameManager
-    @Binding var isGameStarted: Bool
+
+// 評價彈窗
+struct EvaluationView: View {
+    let report: String
+    var onDismiss: () -> Void
     
     var body: some View {
-        ZStack{
-            // 1. 動態背景圖
+        VStack {
+            Text("📜 冒險評價")
+                .font(.largeTitle)
+                .padding()
+            ScrollView {
+                Text(report)
+                    .padding()
+            }
+            Button("回到主標題") {
+                onDismiss()
+            }
+            .padding()
+        }
+    }
+}
+
+// 翻新後的主遊戲畫面
+struct MainGameView: View {
+    @Bindable var gameManager: DungeonGameManager
+    @Binding var gameState: GameState
+    @State private var playerInput: String = ""
+    
+    var body: some View {
+        ZStack {
+            // 背景圖
             if let bgURL = gameManager.currentBackgroundImageURL {
                 AsyncImage(url: bgURL) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .ignoresSafeArea()
-                        .opacity(0.3) // 讓背景暗一點，不然文字看不清楚
-                } placeholder: {
-                    Color.black // 載入中顯示黑色
-                }
+                    image.resizable().scaledToFill().ignoresSafeArea().opacity(0.2)
+                } placeholder: { Color.black.ignoresSafeArea() }
             } else {
-                Color.black.ignoresSafeArea() // 預設背景
+                Color.black.ignoresSafeArea()
             }
-            // 2. 遊戲內容層 (原本的 VStack)
-            VStack(spacing: 0) {
-                // --- A. 頂部資訊區 (HUD) ---
+            
+            VStack {
+                // 頂部功能列
                 HStack {
-                    Button(action: { isGameStarted = false }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.gray)
-                    }
-                    Spacer()
-                    Text("第 1 層：哥布林洞穴")
+                    Text("HP: \(gameManager.playerHP)")
                         .font(.headline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    // 這裡可以放玩家血量 (如果有做的話)
-                    Label("HP: 100", systemImage: "heart.fill")
                         .foregroundStyle(.red)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.ultraThinMaterial, in: Capsule())
+                    
+                    Spacer()
+                    
+                    Button("結束冒險") {
+                        Task { await gameManager.endGameAndEvaluate() }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .padding(8)
+                    .background(Color.red.opacity(0.8))
+                    .cornerRadius(8)
                 }
                 .padding()
-                .background(.ultraThinMaterial)
                 
-                // --- B. 怪物卡片區 (如果遇到敵人的話) ---
-                if let enemy = gameManager.currentEnemy {
-                    VStack(spacing: 10) {
-                        // 這裡可以用 AsyncImage 載入網路圖片 (加分項)
-                        if let enemyURL = gameManager.currentEnemyImageURL {
-                            AsyncImage(url: enemyURL) { image in
-                                image.resizable().scaledToFit().frame(height: 150)
-                            } placeholder: {
-                                ProgressView()
-                            }
-                        }
-                        
-                        Text(enemy.name)
-                            .font(.title2)
-                            .bold()
-                        
-                        // 怪物血條
-                        VStack(alignment: .leading) {
-                            HStack {
-                                Text("Enemy HP")
-                                    .font(.caption)
-                                    .bold()
-                                Spacer()
-                                Text("\(gameManager.currentEnemyHP) / \(enemy.hp)")
-                                    .font(.caption)
-                                    .monospacedDigit()
-                            }
-                            
-                            ProgressView(value: Double(gameManager.currentEnemyHP), total: Double(enemy.hp))
-                                .tint(.red)
-                                .scaleEffect(x: 1, y: 4, anchor: .center) // 讓血條變粗一點
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                        .padding(.horizontal)
-                        
-                        Text(enemy.description)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .padding(.bottom)
-                    }
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(16)
-                    .padding()
-                    .transition(.scale.combined(with: .opacity))
-                }
-                
-                // --- C. 劇情文字區 (像聊天室) ---
+                // 故事卷軸
                 ScrollViewReader { proxy in
                     ScrollView {
-                        Text(gameManager.storyText)
-                            .font(.body)
-                            .lineSpacing(6) // 增加行距比較好讀
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .id("bottom") // 用來自動捲動到底部
+                        VStack(alignment: .leading, spacing: 10) {
+                            // 修正 1 & 2: 使用 LocalizedStringKey 強制渲染 Markdown，並加上美化
+                            Text(.init(gameManager.storyText))
+                                .font(.body)
+                                .lineSpacing(6)
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id("bottom") // 自動捲動的錨點
+                        }
+                        .background(.ultraThinMaterial) // 修正 3: 加入毛玻璃背景，提升可讀性
+                        .cornerRadius(16) // 圓角
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1) // 加個淡淡的邊框更有質感
+                        )
+                        .padding(.horizontal) // 外距：讓整個框框不要貼著螢幕左右邊緣
+                        .padding(.top, 10) // 頂部留點空間
+                        .padding(.bottom, 80) // 底部留多一點空間，以免被輸入框擋住
                     }
                     .onChange(of: gameManager.storyText) {
                         withAnimation {
@@ -160,94 +137,27 @@ struct MainGameView: View {
                         }
                     }
                 }
-                .background(Color.gray.opacity(0.05))
                 
-                // --- D. 底部操作區 ---
-                VStack(spacing: 16) {
-                    // 勝利提示
-                    if gameManager.isVictory {
-                        Text("🎉 戰鬥勝利！")
-                            .font(.title)
-                            .bold()
-                            .foregroundStyle(.green)
-                            .transition(.scale)
-                    }
+                // 底部輸入區
+                HStack(spacing: 10) {
+                    TextField("輸入行動...", text: $playerInput)
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.vertical, 8)
                     
-                    HStack(spacing: 20) {
-                        // 探索按鈕
-                        Button {
-                            Task { await gameManager.encounterEnemy() }
-                        } label: {
-                            VStack {
-                                Image(systemName: "map.fill")
-                                    .font(.title)
-                                Text("探索")
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue.gradient)
-                            .foregroundStyle(.white)
-                            .cornerRadius(12)
-                        }
-                        .disabled(gameManager.currentEnemyHP > 0) // 戰鬥中不能探索
-                        
-                        HStack(spacing: 15) {
-                            // 防禦按鈕
-                            Button {
-                                gameManager.defend()
-                            } label: {
-                                VStack {
-                                    Image(systemName: "shield.fill")
-                                    Text("防禦")
-                                }
-                                .padding()
-                                .background(Color.blue.opacity(0.2))
-                                .cornerRadius(10)
-                            }
-                            
-                            // 攻擊按鈕 (大)
-                            Button {
-                                Task { await gameManager.performFastAttack(damage: 15) } // 呼叫快速攻擊
-                            } label: {
-                                VStack {
-                                    Image(systemName: "sword.fill")
-                                        .font(.title)
-                                    Text("攻擊")
-                                }
-                                .frame(width: 100, height: 80)
-                                .background(Color.red.gradient)
-                                .foregroundStyle(.white)
-                                .cornerRadius(15)
-                                .shadow(radius: 5)
-                            }
-                            
-                            // 補血按鈕 (帶冷卻遮罩)
-                            Button {
-                                gameManager.heal()
-                            } label: {
-                                ZStack {
-                                    VStack {
-                                        Image(systemName: "cross.case.fill")
-                                        Text("治療")
-                                    }
-                                    // 冷卻遮罩
-                                    if gameManager.healCooldown > 0 {
-                                        Color.black.opacity(0.5)
-                                        Text("\(gameManager.healCooldown)")
-                                            .foregroundStyle(.white)
-                                            .font(.title)
-                                    }
-                                }
-                                .padding()
-                                .background(Color.green.opacity(0.2))
-                                .cornerRadius(10)
-                            }
-                            .disabled(gameManager.healCooldown > 0)
-                        }
+                    Button {
+                        let input = playerInput
+                        playerInput = ""
+                        Task { await gameManager.processPlayerInput(input) }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .font(.system(size: 34))
+                            .foregroundStyle(.blue)
                     }
+                    .disabled(playerInput.isEmpty)
                 }
                 .padding()
-                .background(.ultraThinMaterial) // 毛玻璃背景
+                .background(.bar) // 鍵盤上方的背景條
             }
         }
     }
