@@ -79,9 +79,15 @@ struct MainGameView: View {
         ZStack {
             // 背景圖
             if let bgURL = gameManager.currentBackgroundImageURL {
-                AsyncImage(url: bgURL) { image in
-                    image.resizable().scaledToFill().ignoresSafeArea().opacity(0.2)
-                } placeholder: { Color.black.ignoresSafeArea() }
+                AsyncImage(url: bgURL) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill().ignoresSafeArea().opacity(0.2)
+                    } else if phase.error != nil {
+                        Color.black.ignoresSafeArea() // 載入失敗用黑色
+                    } else {
+                        Color.black.ignoresSafeArea() // 載入中先用黑色
+                    }
+                }
             } else {
                 Color.black.ignoresSafeArea()
             }
@@ -137,12 +143,39 @@ struct MainGameView: View {
                         }
                     }
                 }
-                
+                if !gameManager.suggestedActions.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(gameManager.suggestedActions, id: \.self) { action in
+                                Button {
+                                    Task { await gameManager.processPlayerInput(action) }
+                                } label: {
+                                    Text(action)
+                                        .font(.footnote)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                        )
+                                        .cornerRadius(20)
+                                        .shadow(color: .blue.opacity(0.3), radius: 3, x: 0, y: 2)
+                                }
+                                .disabled(gameManager.isGenerating)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 5)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 // 底部輸入區
                 HStack(spacing: 10) {
-                    TextField("輸入行動...", text: $playerInput)
+                    TextField(gameManager.isGenerating ? "AI 思考中..." : "輸入行動...", text: $playerInput)
                         .textFieldStyle(.roundedBorder)
                         .padding(.vertical, 8)
+                        .disabled(gameManager.isGenerating)
                     
                     Button {
                         let input = playerInput
@@ -152,7 +185,7 @@ struct MainGameView: View {
                         Image(systemName: "arrow.up.circle.fill")
                             .symbolRenderingMode(.hierarchical)
                             .font(.system(size: 34))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(gameManager.isGenerating ? .gray : .blue)
                     }
                     .disabled(playerInput.isEmpty)
                 }

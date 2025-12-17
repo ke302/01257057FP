@@ -13,14 +13,10 @@ struct CharacterCreationView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // [1] 設定角色名稱 (15字)
-                Section(header: Text("角色名稱 (上限15字)")) {
-                    TextField("輸入名稱 (例如: 麥當勞叔叔)", text: $gameManager.charName)
-                        .onChange(of: gameManager.charName) { _, newValue in
-                            if newValue.count > 15 {
-                                gameManager.charName = String(newValue.prefix(15))
-                            }
-                        }
+                // [1] 設定角色名稱
+                Section(header: Text("角色名稱")) {
+                    TextField("輸入名稱", text: $gameManager.charName)
+    
                     Text("\(gameManager.charName.count)/15")
                         .font(.caption)
                         .foregroundStyle(gameManager.charName.count == 15 ? .red : .secondary)
@@ -28,17 +24,12 @@ struct CharacterCreationView: View {
                 }
                 
                 // [2] 設定角色圖片關鍵字 (150字, 5次機會)
-                Section(header: Text("角色圖片關鍵字 (AI產圖)")) {
+                Section(header: Text("角色圖片關鍵字")) {
                     TextEditor(text: $gameManager.imagePrompt)
                         .frame(height: 80)
-                        .onChange(of: gameManager.imagePrompt) { _, newValue in
-                            if newValue.count > 150 {
-                                gameManager.imagePrompt = String(newValue.prefix(150))
-                            }
-                        }
                     
                     HStack {
-                        Text("剩餘嘗試次數: \(gameManager.imageRetryCount)")
+                        Text("剩餘次數: \(gameManager.imageRetryCount)")
                             .font(.caption)
                             .foregroundStyle(.blue)
                         Spacer()
@@ -48,7 +39,7 @@ struct CharacterCreationView: View {
                     }
                     
                     // 預覽按鈕
-                    Button("試算圖片 (不扣次數)") {
+                    Button("生成") {
                         Task {
                             await gameManager.fetchPlayerImage()
                         }
@@ -56,10 +47,24 @@ struct CharacterCreationView: View {
                     .disabled(gameManager.imagePrompt.isEmpty)
                     
                     if let url = gameManager.playerImageURL {
-                        AsyncImage(url: url) { image in
-                            image.resizable().scaledToFit()
-                        } placeholder: {
-                            ProgressView()
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .empty:
+                                ZStack {
+                                    Color.gray.opacity(0.2)
+                                    ProgressView()
+                                }
+                            case .success(let image):
+                                image.resizable().scaledToFit()
+                            case .failure:
+                                ZStack {
+                                    Color.gray.opacity(0.2)
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .foregroundStyle(.gray)
+                                }
+                            @unknown default:
+                                EmptyView()
+                            }
                         }
                         .frame(height: 150)
                         .cornerRadius(10)
@@ -67,43 +72,37 @@ struct CharacterCreationView: View {
                 }
                 
                 // [4] 角色設定 (150字)
-                Section(header: Text("角色設定 (各種逆天設定)")) {
+                Section(header: Text("角色設定")) {
                     TextEditor(text: $gameManager.charSettings)
                         .frame(height: 100)
                         .overlay(alignment: .topLeading) {
                             if gameManager.charSettings.isEmpty {
-                                Text("例如: 銀髮美少女, 吸血鬼, 語尾DesuWa...")
+                                Text("例如: 銀髮美少女, 吸血鬼, 惡魔...")
                                     .foregroundStyle(.gray.opacity(0.5))
                                     .padding(8)
                                     .allowsHitTesting(false)
                             }
-                        }
-                        .onChange(of: gameManager.charSettings) { _, newValue in
-                            if newValue.count > 150 { gameManager.charSettings = String(newValue.prefix(150)) }
                         }
                     CharacterCountView(current: gameManager.charSettings.count, limit: 150)
                 }
                 
                 // [5] 弱點 (150字)
-                Section(header: Text("弱點 (可鬼扯)")) {
+                Section(header: Text("弱點")) {
                     TextEditor(text: $gameManager.charWeakness)
                         .frame(height: 80)
                         .overlay(alignment: .topLeading) {
                             if gameManager.charWeakness.isEmpty {
-                                Text("例如: 太可愛迷死對手, 從來沒輸過...")
+                                Text("例如: 碰到水會融化掉")
                                     .foregroundStyle(.gray.opacity(0.5))
                                     .padding(8)
                                     .allowsHitTesting(false)
                             }
                         }
-                        .onChange(of: gameManager.charWeakness) { _, newValue in
-                            if newValue.count > 150 { gameManager.charWeakness = String(newValue.prefix(150)) }
-                        }
                     CharacterCountView(current: gameManager.charWeakness.count, limit: 150)
                 }
                 
                 // [6] 技能 (150字)
-                Section(header: Text("技能 (越多越好)")) {
+                Section(header: Text("技能")) {
                     TextEditor(text: $gameManager.charSkills)
                         .frame(height: 100)
                         .overlay(alignment: .topLeading) {
@@ -113,9 +112,6 @@ struct CharacterCreationView: View {
                                     .padding(8)
                                     .allowsHitTesting(false)
                             }
-                        }
-                        .onChange(of: gameManager.charSkills) { _, newValue in
-                            if newValue.count > 150 { gameManager.charSkills = String(newValue.prefix(150)) }
                         }
                     CharacterCountView(current: gameManager.charSkills.count, limit: 150)
                 }
