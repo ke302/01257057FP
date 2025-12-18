@@ -30,7 +30,7 @@ struct GoogleGenAIImageResponse: Codable {
 }
 
 class ImageFetcher {
-    private let apiKey = "AIzaSyCxgDApv7Fkb0wZ2oawx1s62UdsTJz-KHc"
+    private let apiKey = ""
     
     // 保持原本的方法名稱，這樣 GameManager 不用改任何程式碼
     func fetchImageURL(query: String) async -> URL? {
