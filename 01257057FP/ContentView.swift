@@ -4,194 +4,89 @@
 //
 //  Created by user05 on 2025/12/11.
 //
-
-// ContentView.swift
-//
 import SwiftUI
 import FoundationModels
-import ConfettiSwiftUI
-
-// 定義遊戲的三個階段
-enum GameState {
-    case creatingCharacter // 1. 創角
-    case settingWorld      // 2. 世界設定
-    case playing           // 3. 遊戲進行中
-}
 
 struct ContentView: View {
-    @State private var gameManager = DungeonGameManager()
-    @State private var gameState: GameState = .creatingCharacter
-    @State private var confettiTrigger = 0
+    @State private var gameManager = StoryGameManager()
+    // 監聽 Tool 傳來的資料
+    var bridge = GameStateBridge.shared
     
     var body: some View {
         NavigationStack {
-            switch gameState {
-            case .creatingCharacter:
-                CharacterCreationView(gameState: $gameState, gameManager: gameManager)
-                
-            case .settingWorld:
-                WorldSettingView(gameManager: gameManager, gameState: $gameState)
-                
-            case .playing:
-                MainGameView(gameManager: gameManager, gameState: $gameState)
-            }
-        }
-        // 監聽評價視窗
-        .sheet(isPresented: $gameManager.showEvaluation) {
-            EvaluationView(report: gameManager.evaluationReport) {
-                // 關閉評價後，回到主選單或重置
-                gameState = .creatingCharacter
-                gameManager = DungeonGameManager() // 重置遊戲
-            }
-        }
-    }
-}
-
-// 評價彈窗
-struct EvaluationView: View {
-    let report: String
-    var onDismiss: () -> Void
-    
-    var body: some View {
-        VStack {
-            Text("📜 冒險評價")
-                .font(.largeTitle)
-                .padding()
-            ScrollView {
-                Text(report)
-                    .padding()
-            }
-            Button("回到主標題") {
-                onDismiss()
-            }
-            .padding()
-        }
-    }
-}
-
-// 翻新後的主遊戲畫面
-struct MainGameView: View {
-    @Bindable var gameManager: DungeonGameManager
-    @Binding var gameState: GameState
-    @State private var playerInput: String = ""
-    
-    var body: some View {
-        ZStack {
-            // 背景圖
-            if let bgURL = gameManager.currentBackgroundImageURL {
-                AsyncImage(url: bgURL) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill().ignoresSafeArea().opacity(0.2)
-                    } else if phase.error != nil {
-                        Color.black.ignoresSafeArea() // 載入失敗用黑色
-                    } else {
-                        Color.black.ignoresSafeArea() // 載入中先用黑色
-                    }
-                }
-            } else {
-                Color.black.ignoresSafeArea()
-            }
-            
             VStack {
-                // 頂部功能列
-                HStack {
-                    Text("HP: \(gameManager.playerHP)")
-                        .font(.headline)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: Capsule())
-                    
-                    Spacer()
-                    
-                    Button("結束冒險") {
-                        Task { await gameManager.endGameAndEvaluate() }
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .padding(8)
-                    .background(Color.red.opacity(0.8))
-                    .cornerRadius(8)
-                }
-                .padding()
-                
-                // 故事卷軸
+                // 1. 故事顯示區 (ScrollView + Text)
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 10) {
-                            // 修正 1 & 2: 使用 LocalizedStringKey 強制渲染 Markdown，並加上美化
-                            Text(.init(gameManager.storyText))
-                                .font(.body)
-                                .lineSpacing(6)
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id("bottom") // 自動捲動的錨點
-                        }
-                        .background(.ultraThinMaterial) // 修正 3: 加入毛玻璃背景，提升可讀性
-                        .cornerRadius(16) // 圓角
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1) // 加個淡淡的邊框更有質感
-                        )
-                        .padding(.horizontal) // 外距：讓整個框框不要貼著螢幕左右邊緣
-                        .padding(.top, 10) // 頂部留點空間
-                        .padding(.bottom, 80) // 底部留多一點空間，以免被輸入框擋住
+                        Text(gameManager.displayedStory)
+                            .padding()
+                            .font(.body)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id("bottom")
                     }
-                    .onChange(of: gameManager.storyText) {
-                        withAnimation {
-                            proxy.scrollTo("bottom", anchor: .bottom)
-                        }
+                    .onChange(of: gameManager.displayedStory) {
+                        // 自動捲動到底部
+                        proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
-                if !gameManager.suggestedActions.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(gameManager.suggestedActions, id: \.self) { action in
-                                Button {
-                                    Task { await gameManager.processPlayerInput(action) }
-                                } label: {
-                                    Text(action)
-                                        .font(.footnote)
-                                        .fontWeight(.bold)
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                        .background(
-                                            LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                        )
-                                        .cornerRadius(20)
-                                        .shadow(color: .blue.opacity(0.3), radius: 3, x: 0, y: 2)
+                
+                Divider()
+                
+                // 2. 選項區 (根據 Tool 的結果顯示按鈕)
+                if !bridge.currentOptions.isEmpty {
+                    VStack(spacing: 12) {
+                        Text("做出你的選擇：")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        
+                        ForEach(bridge.currentOptions, id: \.self) { option in
+                            Button(action: {
+                                Task {
+                                    await gameManager.playerSelected(option)
                                 }
-                                .disabled(gameManager.isGenerating)
+                            }) {
+                                Text(option)
+                                    .fontWeight(.bold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
                             }
                         }
-                        .padding(.horizontal)
-                        .padding(.bottom, 5)
                     }
+                    .padding()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                // 底部輸入區
-                HStack(spacing: 10) {
-                    TextField(gameManager.isGenerating ? "AI 思考中..." : "輸入行動...", text: $playerInput)
-                        .textFieldStyle(.roundedBorder)
-                        .padding(.vertical, 8)
-                        .disabled(gameManager.isGenerating)
-                    
-                    Button {
-                        let input = playerInput
-                        playerInput = ""
-                        Task { await gameManager.processPlayerInput(input) }
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .symbolRenderingMode(.hierarchical)
-                            .font(.system(size: 34))
-                            .foregroundStyle(gameManager.isGenerating ? .gray : .blue)
+                } else if gameManager.isGenerating {
+                    // AI 正在思考或打字中
+                    HStack {
+                        ProgressView()
+                        Text("故事生成中...")
+                            .font(.caption)
                     }
-                    .disabled(playerInput.isEmpty)
+                    .padding()
+                } else if gameManager.displayedStory.isEmpty {
+                    // 尚未開始遊戲
+                    Button("開始冒險") {
+                        Task { await gameManager.startStory() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding()
                 }
-                .padding()
-                .background(.bar) // 鍵盤上方的背景條
             }
+            .navigationTitle("互動小說 AI")
+            .toolbar {
+                // 設定按鈕
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { /* 顯示設定頁面 */ }) {
+                        Image(systemName: "gear")
+                    }
+                }
+            }
+        }
+        .onAppear {
+            // [效能優化] PDF 第 61 頁
+            gameManager.warmUp()
         }
     }
 }
