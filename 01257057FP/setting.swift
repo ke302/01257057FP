@@ -7,63 +7,53 @@
 import SwiftUI
 
 struct SettingsView: View {
-    // 讓這個 View 可以關閉自己
     @Environment(\.dismiss) var dismiss
     
-    // 接收 GameManager 來修改設定
-    @Bindable var gameManager: StoryGameManager
+    // 連結 StoryManager (為了控制 BGM)
+    @Bindable var gameManager: StoryManager
     
-    // [需求] ColorPicker: 自訂主題色
+    // 連結主題色 (為了控制 App 外觀)
     @Binding var themeColor: Color
     
-    // [需求] Toggle: 是否開啟背景音樂 (假裝的功能)
+    // 使用 AppStorage 記住設定
     @AppStorage("isBGMEnabled") private var isBGMEnabled = true
-    
-    // [需求] Slider: 文字大小
-    @AppStorage("textSize") private var textSize: Double = 16.0
-    
-    // [需求] DatePicker: 設定角色的生日
-    @State private var birthDate = Date()
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("角色設定") {
-                    // [需求] TextField
-                    TextField("主角名字", text: $gameManager.playerName)
-                    
-                    // [需求] Picker
-                    Picker("劇本風格", selection: $gameManager.genre) {
-                        Text("賽博龐克").tag("賽博龐克偵探")
-                        Text("中世紀奇幻").tag("中世紀奇幻")
-                        Text("克蘇魯神話").tag("克蘇魯神話")
+                Section("系統設定") {
+                    // [需求] Toggle: BGM 開關
+                    Toggle(isOn: $isBGMEnabled) {
+                        HStack {
+                            Image(systemName: isBGMEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                                .foregroundStyle(themeColor)
+                            Text("背景音樂 (BGM)")
+                        }
+                    }
+                    .onChange(of: isBGMEnabled) {
+                        gameManager.isBGMEnabled = isBGMEnabled
                     }
                     
-                    // [需求] DatePicker
-                    DatePicker("角色生日", selection: $birthDate, displayedComponents: .date)
+                    // [需求] ColorPicker: 讓玩家選喜歡的 App 主題色
+                    ColorPicker("介面主題色", selection: $themeColor)
                 }
                 
-                Section("介面外觀") {
-                    // [需求] ColorPicker
-                    ColorPicker("主題顏色", selection: $themeColor)
-                    
-                    // [需求] Slider
-                    VStack(alignment: .leading) {
-                        Text("文字大小: \(Int(textSize))")
-                        Slider(value: $textSize, in: 14...24, step: 1)
-                    }
+                Section {
+                    Text("流浪者酒館 v1.0")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
-                
-                Section("系統") {
-                    // [需求] Toggle
-                    Toggle("背景音樂", isOn: $isBGMEnabled)
-                }
+                .listRowBackground(Color.clear)
             }
-            .navigationTitle("遊戲設定")
+            .navigationTitle("設定")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                Button("完成") {
-                    dismiss()
-                }
+                Button("完成") { dismiss() }
+            }
+            .onAppear {
+                // 同步狀態
+                gameManager.isBGMEnabled = isBGMEnabled
             }
         }
     }

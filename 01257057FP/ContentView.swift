@@ -6,140 +6,151 @@
 //
 import SwiftUI
 import FoundationModels
-import TipKit // [需求] TipKit
-import ConfettiSwiftUI // [需求] SPM
+import TipKit
+import ConfettiSwiftUI
 
 struct StartTip: Tip {
-    var title: Text { Text("開始冒險") }
-    var message: Text? { Text("點擊這裡開始你的故事！") }
+    var title: Text { Text("準備好了嗎？") }
+    var message: Text? { Text("點擊播放，讓 AI 為你講一個睡前故事。") }
 }
 
 struct ContentView: View {
-    @State private var gameManager = StoryGameManager()
+    @Bindable var gameManager: StoryManager
+    
     @State private var showSettings = false
-    @State private var themeColor: Color = .blue // 主題色狀態
-    @State private var confettiCounter = 0 // [需求] SPM: 撒花特效計數器
+    @State private var themeColor: Color = .blue
+    @State private var confettiCounter = 0
     @State private var storyImageURL: URL?
     
-    let imageFetcher = ImageFetcher() // 你的 ImageFetcher
-    var bridge = GameStateBridge.shared
-    
-    // 實例化 Tip
+    let imageFetcher = ImageFetcher()
     let startTip = StartTip()
     
     var body: some View {
         NavigationStack {
-            ZStack{
+            ZStack {
+                gameManager.currentStoryteller.color.opacity(0.05).ignoresSafeArea()
+
                 VStack {
-                    //  顯示網路圖片 (如果有的話)
                     if let url = storyImageURL {
                         AsyncImage(url: url) { image in
                             image.resizable().scaledToFit()
                         } placeholder: {
                             ProgressView()
                         }
-                        .frame(height: 200)
-                        .cornerRadius(12)
-                        .padding()
+                        .frame(height: 200).cornerRadius(12).padding().shadow(radius: 5)
                     }
                     
-                    // 1. 故事顯示區 (ScrollView + Text)
                     ScrollViewReader { proxy in
                         ScrollView {
                             Text(gameManager.displayedStory)
                                 .padding()
-                                .font(.body)
+                                .font(.system(size: 18, weight: .regular, design: .serif))
+                                .lineSpacing(8)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .id("bottom")
                         }
                         .onChange(of: gameManager.displayedStory) {
-                            // 自動捲動到底部
-                            proxy.scrollTo("bottom", anchor: .bottom)
+                            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                         }
                     }
                     
                     Divider()
                     
-                    // 2. 選項區 (根據 Tool 的結果顯示按鈕)
-                    if !bridge.currentOptions.isEmpty {
+                    if !gameManager.currentOptions.isEmpty {
                         VStack(spacing: 12) {
-                            Text("做出你的選擇：")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            Text("故事結束了")
+                                .font(.caption).foregroundStyle(.secondary)
                             
-                            ForEach(bridge.currentOptions, id: \.self) { option in
+                            ForEach(gameManager.currentOptions, id: \.self) { option in
                                 Button(action: {
-                                    Task {
-                                        await gameManager.playerSelected(option)
-                                    }
+                                    // [修正] 不需要 Task await 了，直接呼叫
+                                    gameManager.playerSelected(option)
                                 }) {
-                                    Text(option)
-                                        .fontWeight(.bold)
-                                        .frame(maxWidth: .infinity)
-                                        .padding()
-                                        .background(Color.blue)
-                                        .foregroundColor(.white)
-                                        .cornerRadius(10)
+                                    HStack {
+                                        Image(systemName: "arrow.clockwise")
+                                        Text(option)
+                                    }
+                                    .fontWeight(.bold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(gameManager.currentStoryteller.color)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(25)
                                 }
                             }
                         }
                         .padding()
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                        
                     } else if gameManager.isGenerating {
-                        // AI 正在思考或打字中
-                        HStack {
-                            ProgressView()
-                            Text("故事生成中...")
-                                .font(.caption)
+                        HStack(spacing: 15) {
+                            ProgressView().tint(gameManager.currentStoryteller.color)
+                            Text("\(gameManager.currentStoryteller.name) 正在講述...").font(.subheadline).foregroundStyle(.secondary)
                         }
                         .padding()
+                        
                     } else if gameManager.displayedStory.isEmpty {
-                        // 尚未開始遊戲
-                        Button("開始冒險") {
+                        Button(action: {
                             confettiCounter += 1
+                            // [修正] 故事邏輯由 Manager 自己跑，我們這邊只負責生圖
+                            gameManager.startStory()
                             
-                            Task { await gameManager.startStory()
+                            Task {
                                 await generateSceneImage()
                             }
+                        }) {
+                            HStack {
+                                Image(systemName: "play.fill")
+                                Text("聽故事")
+                            }
+                            .font(.title3.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(gameManager.currentStoryteller.color)
+                            .foregroundColor(.white)
+                            .cornerRadius(15)
+                            .shadow(radius: 3)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(themeColor)
-                        .padding()
-                        .popoverTip(startTip)
-                        
+                        .padding(.horizontal, 40).padding(.bottom, 20).popoverTip(startTip)
                     }
                 }
-                ConfettiCannon(trigger: $confettiCounter, num: 50, confettis: [.text("✨"), .text("🚀"), .shape(.circle)])
+                GeometryReader { geo in
+                    // 只有當畫面寬度大於 0 時，才載入撒花元件
+                    if geo.size.width > 0 {
+                        ConfettiCannon(trigger: $confettiCounter, num: 50, confettis: [.text("✨"), .text("🌙"), .shape(.circle)])
+                    }
+                }
+                // 讓這個 GeometryReader 不干擾排版
+                .allowsHitTesting(false)
             }
-            
-            .navigationTitle("互動小說 AI")
+            .navigationTitle(gameManager.currentStoryteller.name)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // 設定按鈕
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { /* 顯示設定頁面 */ }) {
-                        Image(systemName: "gear")
+                    Button(action: { showSettings = true }) {
+                        Image(systemName: "gearshape.fill").foregroundStyle(gameManager.currentStoryteller.color)
                     }
                 }
             }
             .sheet(isPresented: $showSettings) {
-                // 傳遞 Binding
                 SettingsView(gameManager: gameManager, themeColor: $themeColor)
             }
-            .task {
-                // 初始化 TipKit
-                try? Tips.configure()
-            }
+            .task { try? Tips.configure() }
         }
         .onAppear {
-            // [效能優化] PDF 第 61 頁
             gameManager.warmUp()
+            if !gameManager.displayedStory.isEmpty && storyImageURL == nil {
+                Task { await generateSceneImage() }
+            }
         }
-        
+        .onDisappear {
+            // 離開時，這行會觸發 StoryManager 裡的 cancel()，確保乾淨
+            gameManager.resetGame()
+        }
     }
+    
     func generateSceneImage() async {
-        // 使用你的 ImageFetcher
-        // 注意：記得去 ImageFetcher.swift 填入你的 API Key
-        let prompt = "A cinematic scene for a \(gameManager.genre) story, high quality, artstation style"
+        let prompt = "A cinematic scene for a \(gameManager.genre) story, high quality, artstation style, warm lighting"
         if let url = await imageFetcher.fetchImageURL(query: prompt) {
             self.storyImageURL = url
         }
