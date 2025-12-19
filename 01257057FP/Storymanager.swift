@@ -4,6 +4,7 @@
 //
 //  Created by user05 on 2025/12/19.
 //
+
 import Foundation
 import SwiftUI
 import FoundationModels
@@ -42,8 +43,13 @@ class StoryManager {
     
     var userTopic: String = ""
     var isBGMEnabled: Bool = true
+    
     var speechRate: Float = 0.5 {
         didSet { speechManager.setRate(speechRate) }
+    }
+    
+    var speechVolume: Float = 1.0 {
+        didSet { speechManager.setVolume(speechVolume) }
     }
     
     var genre: String = "中世紀奇幻"
@@ -59,9 +65,10 @@ class StoryManager {
     
     private var currentTask: Task<Void, Never>?
     private var storyHistory: String = ""
-    
-    // [新功能] 世代 ID (掛號單)，用來辨識這是哪一次的請求
     private var currentGenerationID = UUID()
+    
+    // 語音緩衝區
+    private var speechBuffer: String = ""
     
     init() {
         self.session = LanguageModelSession()
@@ -76,14 +83,12 @@ class StoryManager {
     }
     
     func resetGame() {
-        // 取消任務
         currentTask?.cancel()
-        
-        // [關鍵] 換一張新的號碼牌，這樣舊的任務就算活著回來，也會因為號碼不對被擋在門外
         currentGenerationID = UUID()
         
         displayedStory = ""
         storyHistory = ""
+        speechBuffer = ""
         currentOptions = []
         isGenerating = false
         speechManager.stop()
@@ -91,10 +96,7 @@ class StoryManager {
     
     func startStory() {
         resetGame()
-        
         self.genre = currentStoryteller.genre
-        
-        // 鎖定這次的 ID
         let myID = self.currentGenerationID
         
         var specificRequest = ""
@@ -124,15 +126,11 @@ class StoryManager {
         self.session = LanguageModelSession(tools: [contextTool], instructions: instructions)
         
         currentTask = Task {
-            // 把 ID 傳進去
             await sendPrompt("請檢查環境(checkCurrentContext)並開始故事。", generationID: myID)
         }
     }
     
     func playerSelected(_ choice: String) {
-        // 清理介面，但不換 ID (因為這是同一次對話的延續... 不對，這裡是重新開始)
-        // 為了保險，我們視為全新開始
-        
         self.displayedStory = ""
         self.storyHistory = ""
         self.currentOptions = []
@@ -143,39 +141,48 @@ class StoryManager {
         }
     }
     
-    // [修改] 增加 generationID 參數
     private func sendPrompt(_ text: String, generationID: UUID) async {
-        // [第一道防線] 如果 ID 不對，直接不跑
         guard generationID == self.currentGenerationID else { return }
         
         await MainActor.run {
-            // [第二道防線] 再次檢查 (因為切換 thread 需要時間)
             guard generationID == self.currentGenerationID else { return }
             isGenerating = true
+            speechBuffer = ""
             if storyHistory.isEmpty { storyHistory = displayedStory }
         }
         
-        var currentTurnText = ""
         var pendingOptions: [String] = []
+        let sentenceDelimiters: CharacterSet = ["。", "！", "？", "\n", "…"]
+        
+        // [關鍵修正] 用來記錄上一回合處理到第幾個字
+        var lastProcessedLength = 0
         
         do {
             let stream = session.streamResponse(to: text, generating: StoryTurn.self)
             
             for try await partial in stream {
-                // [第三道防線] 串流過程中隨時檢查 ID
-                // 這是你擔心的情況：如果字還沒出來你就切換了，這裡就會攔截到
-                if generationID != self.currentGenerationID || Task.isCancelled {
-                    // 默默離開，不要更新 UI
-                    return
-                }
+                if generationID != self.currentGenerationID || Task.isCancelled { return }
                 
                 await MainActor.run {
-                    // [第四道防線] UI 更新前最後確認
                     guard generationID == self.currentGenerationID else { return }
                     
-                    if let newContent = partial.content.story {
-                        self.displayedStory = self.storyHistory + newContent
-                        currentTurnText = newContent
+                    if let newFullContent = partial.content.story {
+                        // 1. 更新畫面 (直接用完整內容覆蓋，因為 UI 不需要 Delta)
+                        self.displayedStory = self.storyHistory + newFullContent
+                        
+                        // 2. [關鍵] 計算 Delta (只取新增的字) 給語音用
+                        if newFullContent.count > lastProcessedLength {
+                            // 算出新增的片段
+                            let deltaIndex = newFullContent.index(newFullContent.startIndex, offsetBy: lastProcessedLength)
+                            let deltaString = String(newFullContent[deltaIndex...])
+                            
+                            // 更新進度
+                            lastProcessedLength = newFullContent.count
+                            
+                            // 只把新增的字加入緩衝區
+                            self.speechBuffer += deltaString
+                            self.processSpeechBuffer(delimiters: sentenceDelimiters)
+                        }
                     }
                     if let newOptions = partial.content.options {
                         pendingOptions = newOptions
@@ -184,7 +191,6 @@ class StoryManager {
             }
             
             await MainActor.run {
-                // [第五道防線] 結束後的處理
                 guard generationID == self.currentGenerationID else { return }
                 if Task.isCancelled { return }
                 
@@ -197,12 +203,13 @@ class StoryManager {
                     self.currentOptions = validOptions
                 }
                 
-                if !currentTurnText.isEmpty {
-                    self.speechManager.speak(currentTurnText)
+                // 唸出緩衝區剩餘的字
+                if !self.speechBuffer.isEmpty {
+                    self.speechManager.speak(self.speechBuffer)
+                    self.speechBuffer = ""
                 }
             }
         } catch {
-            // 只有當 ID 相符時才報錯，不然舊任務的錯誤我們不關心
             if generationID == self.currentGenerationID && !Task.isCancelled {
                 print("AI Error: \(error)")
                 self.errorMessage = error.localizedDescription
@@ -213,6 +220,15 @@ class StoryManager {
             if generationID == self.currentGenerationID {
                 isGenerating = false
             }
+        }
+    }
+    
+    private func processSpeechBuffer(delimiters: CharacterSet) {
+        while let range = speechBuffer.rangeOfCharacter(from: delimiters) {
+            let endIndex = speechBuffer.index(after: range.lowerBound)
+            let sentence = String(speechBuffer[..<endIndex])
+            speechManager.speak(sentence)
+            speechBuffer.removeSubrange(..<endIndex)
         }
     }
 }

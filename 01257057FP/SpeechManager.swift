@@ -13,6 +13,9 @@ class SpeechManager: NSObject, AVSpeechSynthesizerDelegate {
     private let synthesizer = AVSpeechSynthesizer()
     var isSpeaking = false
     
+    private var currentRate: Float = 0.5
+    private var currentVolume: Float = 1.0
+    
     override init() {
         super.init()
         synthesizer.delegate = self
@@ -25,18 +28,25 @@ class SpeechManager: NSObject, AVSpeechSynthesizerDelegate {
     }
     
     func speak(_ text: String) {
-        stop()
+        
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "zh-TW")
-        utterance.rate = 0.5
-        utterance.pitchMultiplier = 0.8
+        
+        utterance.rate = currentRate
+        utterance.volume = currentVolume
+        utterance.pitchMultiplier = 0.8 // 稍微低沉一點，比較有磁性
+        
         synthesizer.speak(utterance)
         isSpeaking = true
     }
-    
+    //更新語速 (範圍通常是 0.0 ~ 1.0，0.5 是標準)
     func setRate(_ rate: Float) {
-        // AVSpeechSynthesizer 無法動態調整正在講話的語速，
-        // 這裡僅預留介面，實際應用需在 speak() 時讀取此變數
+        self.currentRate = rate
+    }
+    
+    //更新音量 (0.0 ~ 1.0)
+    func setVolume(_ volume: Float) {
+        self.currentVolume = volume
     }
     
     func stop() {

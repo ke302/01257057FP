@@ -17,12 +17,14 @@ struct SettingsView: View {
     
     // 使用 AppStorage 記住設定
     @AppStorage("isBGMEnabled") private var isBGMEnabled = true
+    @AppStorage("speechRate") private var storedSpeechRate: Double = 0.5
+    @AppStorage("speechVolume") private var storedSpeechVolume: Double = 1.0
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("系統設定") {
-                    // [需求] Toggle: BGM 開關
+                Section("聲音設定") {
+                    // 1. BGM 開關
                     Toggle(isOn: $isBGMEnabled) {
                         HStack {
                             Image(systemName: isBGMEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
@@ -34,12 +36,45 @@ struct SettingsView: View {
                         gameManager.isBGMEnabled = isBGMEnabled
                     }
                     
-                    // [需求] ColorPicker: 讓玩家選喜歡的 App 主題色
+                    // 2. 語速調整
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Image(systemName: "tortoise.fill").font(.caption)
+                            Text("說話語速: \(String(format: "%.1f", storedSpeechRate))")
+                            Spacer()
+                            Image(systemName: "hare.fill").font(.caption)
+                        }
+                        .foregroundStyle(themeColor)
+                        
+                        Slider(value: $storedSpeechRate, in: 0.1...0.9, step: 0.1)
+                            .onChange(of: storedSpeechRate) {
+                                gameManager.speechRate = Float(storedSpeechRate)
+                            }
+                    }
+                    
+                    // 3. 音量調整
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Image(systemName: "speaker.fill").font(.caption)
+                            Text("朗讀音量: \(Int(storedSpeechVolume * 100))%")
+                            Spacer()
+                            Image(systemName: "speaker.wave.3.fill").font(.caption)
+                        }
+                        .foregroundStyle(themeColor)
+                        
+                        Slider(value: $storedSpeechVolume, in: 0.0...1.0, step: 0.1)
+                            .onChange(of: storedSpeechVolume) {
+                                gameManager.speechVolume = Float(storedSpeechVolume)
+                            }
+                    }
+                }
+                
+                Section("外觀設定") {
                     ColorPicker("介面主題色", selection: $themeColor)
                 }
                 
                 Section {
-                    Text("流浪者酒館 v1.0")
+                    Text("流浪者酒館 v1.1")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -52,8 +87,9 @@ struct SettingsView: View {
                 Button("完成") { dismiss() }
             }
             .onAppear {
-                // 同步狀態
                 gameManager.isBGMEnabled = isBGMEnabled
+                gameManager.speechRate = Float(storedSpeechRate)
+                gameManager.speechVolume = Float(storedSpeechVolume)
             }
         }
     }
