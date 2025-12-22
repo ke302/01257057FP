@@ -4,7 +4,6 @@
 //
 //  Created by user05 on 2025/12/19.
 //
-
 import Foundation
 import SwiftUI
 import FoundationModels
@@ -34,6 +33,8 @@ struct StorytellerInfo: Identifiable, Hashable {
 @Observable
 class StoryManager {
     var session: LanguageModelSession
+    var modelStatusMessage: String = "檢查中..."
+    var isModelAvailable: Bool = false
     
     var displayedStory: String = ""
     var isGenerating: Bool = false
@@ -44,6 +45,9 @@ class StoryManager {
     var userTopic: String = ""
     var isBGMEnabled: Bool = true
     
+    let bgmManager = BGMManager()
+    let musicService = MusicService()
+    
     var speechRate: Float = 0.5 {
         didSet { speechManager.setRate(speechRate) }
     }
@@ -51,7 +55,11 @@ class StoryManager {
     var speechVolume: Float = 1.0 {
         didSet { speechManager.setVolume(speechVolume) }
     }
-    
+    var bgmVolume: Float = 0.3 {
+        didSet {
+            bgmManager.setVolume(bgmVolume)
+        }
+    }
     var genre: String = "中世紀奇幻"
     
     var currentStoryteller: StorytellerInfo = StorytellerInfo(
@@ -77,9 +85,37 @@ class StoryManager {
     func addCustomStoryteller(_ info: StorytellerInfo) {
         customStorytellers.append(info)
     }
-    
+    func checkAvailability() {
+        // [重要] 檢查模型狀態
+        let model = SystemLanguageModel.default
+        switch model.availability {
+        case .available:
+            self.isModelAvailable = true
+            self.modelStatusMessage = "模型就緒"
+            print("Foundation Model Available")
+        case .unavailable(let reason):
+            self.isModelAvailable = false
+            // 根據不同原因給予提示
+            switch reason {
+            case .deviceNotEligible:
+                self.modelStatusMessage = "此裝置不支援 Apple Intelligence"
+            case .appleIntelligenceNotEnabled:
+                self.modelStatusMessage = "請至設定開啟 Apple Intelligence"
+            case .modelNotReady:
+                self.modelStatusMessage = "模型下載/準備中，請稍候..."
+            default:
+                self.modelStatusMessage = "模型無法使用 (未知原因)"
+            }
+            print("Model Unavailable: \(reason)")
+        @unknown default:
+            self.modelStatusMessage = "未知狀態"
+        }
+    }
     func warmUp() {
-        Task { await session.prewarm() }
+        checkAvailability() // 先檢查狀態
+        if isModelAvailable {
+            Task { await session.prewarm() }
+        }
     }
     
     func resetGame() {
@@ -99,10 +135,6 @@ class StoryManager {
         self.genre = currentStoryteller.genre
         let myID = self.currentGenerationID
         
-        var specificRequest = ""
-        if !userTopic.isEmpty {
-            specificRequest = "，且主題關於「\(userTopic)」"
-        }
         
         let personaIntro = currentStoryteller.isCustom ?
             "你扮演自訂說書人「\(currentStoryteller.name)」。" :
@@ -110,24 +142,46 @@ class StoryManager {
         
         let instructions = """
         \(personaIntro)
-        風格：「\(currentStoryteller.genre)」。
-        
-        【任務】
-        請講述一個**獨立、完整**的短篇故事\(specificRequest)。
-        
-        【嚴格規則】
-        1. 故事必須有明確結局 (The End)。
-        2. **禁止重複**相同的段落或語句。講完就停。
-        3. 字數控制在 **300 字以內**。
-        4. 開場請呼叫 `checkCurrentContext` 融入現實環境。
-        5. `options` 欄位請固定回傳：['再聽一個']。
+        風格為「\(currentStoryteller.genre)」。
+        【任務】講一個完整短篇故事。
+        【規則】
+        1. 500字內，結局明確。
+        2. 禁止重複語句。
+        3. 開場呼叫 `checkCurrentContext`。
+        4. `options` 固定回傳：['再聽一個']。
         """
         
+        if isBGMEnabled {
+            // 優先使用使用者輸入的關鍵字，如果沒有，就用說書人風格
+            let keyword = userTopic.isEmpty ? currentStoryteller.genre : userTopic
+            
+            // 開一個非同步任務去抓音樂
+            Task {
+                do {
+                    print("正在搜尋 BGM: \(keyword)")
+                    // 1. 從 Pixabay 找音樂網址
+                    if let musicURL = try await musicService.fetchMusicURL(query: keyword) {
+                        // 2. 找到後，切回主執行緒播放
+                        await MainActor.run {
+                            bgmManager.playMusic(from: musicURL)
+                        }
+                    } else {
+                        print("找不到關於 \(keyword) 的音樂")
+                    }
+                } catch {
+                    print("BGM 搜尋失敗: \(error)")
+                }
+            }
+        }
         self.session = LanguageModelSession(tools: [contextTool], instructions: instructions)
         
         currentTask = Task {
             await sendPrompt("請檢查環境(checkCurrentContext)並開始故事。", generationID: myID)
         }
+    }
+    
+    func stopBGM() {
+        bgmManager.stop()
     }
     
     func playerSelected(_ choice: String) {
@@ -231,4 +285,5 @@ class StoryManager {
             speechBuffer.removeSubrange(..<endIndex)
         }
     }
+    
 }

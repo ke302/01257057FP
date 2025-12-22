@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage("isBGMEnabled") private var isBGMEnabled = true
     @AppStorage("speechRate") private var storedSpeechRate: Double = 0.5
     @AppStorage("speechVolume") private var storedSpeechVolume: Double = 1.0
+    @AppStorage("bgmVolume") private var storedBGMVolume: Double = 0.3
     
     var body: some View {
         NavigationStack {
@@ -34,8 +35,28 @@ struct SettingsView: View {
                     }
                     .onChange(of: isBGMEnabled) {
                         gameManager.isBGMEnabled = isBGMEnabled
+                        if !isBGMEnabled {
+                            gameManager.stopBGM()
+                        }
                     }
-                    
+                    if isBGMEnabled {
+                        VStack(alignment: .leading) {
+                            HStack {
+                                Image(systemName: "speaker.wave.1.fill").font(.caption)
+                                Text("音樂音量: \(Int(storedBGMVolume * 100))%")
+                                Spacer()
+                                Image(systemName: "speaker.wave.3.fill").font(.caption)
+                            }
+                            .foregroundStyle(themeColor)
+                            
+                            Slider(value: $storedBGMVolume, in: 0.0...1.0, step: 0.1)
+                                .onChange(of: storedBGMVolume) {
+                                    // 同步更新到 Manager
+                                    gameManager.bgmVolume = Float(storedBGMVolume)
+                                }
+                        }
+                    }
+                    Divider().padding(.vertical, 5)
                     // 2. 語速調整
                     VStack(alignment: .leading) {
                         HStack {
@@ -88,6 +109,7 @@ struct SettingsView: View {
             }
             .onAppear {
                 gameManager.isBGMEnabled = isBGMEnabled
+                gameManager.bgmVolume = Float(storedBGMVolume)
                 gameManager.speechRate = Float(storedSpeechRate)
                 gameManager.speechVolume = Float(storedSpeechVolume)
             }

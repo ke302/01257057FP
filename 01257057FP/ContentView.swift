@@ -20,25 +20,26 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var themeColor: Color = .blue
     @State private var confettiCounter = 0
-    @State private var storyImageURL: URL?
+
     
-    let imageFetcher = ImageFetcher()
     let startTip = StartTip()
     
     var body: some View {
         NavigationStack {
             ZStack {
                 gameManager.currentStoryteller.color.opacity(0.05).ignoresSafeArea()
-
-                VStack {
-                    if let url = storyImageURL {
-                        AsyncImage(url: url) { image in
-                            image.resizable().scaledToFit()
-                        } placeholder: {
-                            ProgressView()
-                        }
-                        .frame(height: 200).cornerRadius(12).padding().shadow(radius: 5)
+                if let error = gameManager.errorMessage {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text(error)
+                            .font(.caption)
                     }
+                    .padding()
+                    .background(Color.red.opacity(0.1))
+                    .foregroundStyle(.red)
+                    .cornerRadius(8)
+                }
+                VStack {
                     
                     ScrollViewReader { proxy in
                         ScrollView {
@@ -92,12 +93,8 @@ struct ContentView: View {
                     } else if gameManager.displayedStory.isEmpty {
                         Button(action: {
                             confettiCounter += 1
-                            // [修正] 故事邏輯由 Manager 自己跑，我們這邊只負責生圖
                             gameManager.startStory()
                             
-                            Task {
-                                await generateSceneImage()
-                            }
                         }) {
                             HStack {
                                 Image(systemName: "play.fill")
@@ -139,20 +136,10 @@ struct ContentView: View {
         }
         .onAppear {
             gameManager.warmUp()
-            if !gameManager.displayedStory.isEmpty && storyImageURL == nil {
-                Task { await generateSceneImage() }
-            }
         }
         .onDisappear {
             // 離開時，這行會觸發 StoryManager 裡的 cancel()，確保乾淨
             gameManager.resetGame()
-        }
-    }
-    
-    func generateSceneImage() async {
-        let prompt = "A cinematic scene for a \(gameManager.genre) story, high quality, artstation style, warm lighting"
-        if let url = await imageFetcher.fetchImageURL(query: prompt) {
-            self.storyImageURL = url
         }
     }
 }
