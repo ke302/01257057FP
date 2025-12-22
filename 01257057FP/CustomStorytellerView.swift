@@ -6,7 +6,13 @@
 //
 import SwiftUI
 import PhotosUI
+import TipKit
 
+struct ColorSoulTip: Tip {
+    var title: Text { Text("什麼是靈魂顏色？") }
+    var message: Text? { Text("這個顏色將會決定 App 的介面主題色，以及說書時的撒花特效顏色。") }
+    var image: Image? { Image(systemName: "paintpalette") }
+}
 struct CustomStorytellerView: View {
     // 這裡用 Bindable 才能寫入新角色到 Manager
     @Bindable var gameManager: StoryManager
@@ -23,6 +29,7 @@ struct CustomStorytellerView: View {
     @State private var avatarData: Data?
     
     let genres = ["中世紀奇幻", "賽博龐克偵探", "克蘇魯神話", "都市傳說", "療癒童話"]
+    let colorTip = ColorSoulTip()
     
     var body: some View {
         ZStack {
@@ -102,6 +109,10 @@ struct CustomStorytellerView: View {
                             .padding()
                             .background(Color.white.opacity(0.1))
                             .cornerRadius(10)
+                        
+                        TipView(colorTip, arrowEdge: .top)
+                            .tipBackground(.blue.opacity(0.2)) // 可以自訂背景色
+                            .tint(.white)
                     }
                     .padding(.horizontal)
                     

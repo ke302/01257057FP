@@ -5,6 +5,28 @@
 //  Created by user05 on 2025/12/19.
 //
 import SwiftUI
+import TipKit
+
+struct MagicOrderTip: Tip {
+    var title: Text { Text("點歌小秘訣") }
+    var message: Text? { Text("輸入情境關鍵字（如：雨天、咖啡廳），酒館會為你播放專屬背景音樂喔！") }
+    var image: Image? { Image(systemName: "music.quarternote.3") }
+}
+
+struct CreateCharacterTip: Tip {
+    
+    // 定義一個參數來追蹤是否已經有自訂角色
+    @Parameter
+    static var hasCustomCharacter: Bool = false
+    
+    var title: Text { Text("招募新夥伴") }
+    var message: Text? { Text("覺得內建角色不夠用？點擊這裡創造屬於你的 AI 旅人！") }
+    
+    var rules: [Rule] {
+        // 規則：當 hasCustomCharacter 為 false 時才顯示
+        #Rule(Self.$hasCustomCharacter) { $0 == false }
+    }
+}
 
 struct TavernView: View {
     // 1. 這裡是整個 App 的資料源頭
@@ -22,6 +44,8 @@ struct TavernView: View {
         StorytellerInfo(name: "神秘人", genre: "克蘇魯神話", iconName: "eye.fill", color: .purple),
         StorytellerInfo(name: "時空客", genre: "賽博龐克偵探", iconName: "bolt.fill", color: .cyan)
     ]
+    let magicOrderTip = MagicOrderTip()
+    let createCharTip = CreateCharacterTip()
     
     var body: some View {
         NavigationStack {
@@ -82,11 +106,12 @@ struct TavernView: View {
                                         }
                                     }
                                     .padding(.horizontal)
+                                    .popoverTip(magicOrderTip, arrowEdge: .top)
                                 
                                 Divider().background(Color.white.opacity(0.2)).padding(.vertical)
                                 
                                 // --- 說書人列表 ---
-                                Text("選擇一位說書人")
+                                Text("選擇一位旅人")
                                     .font(.headline)
                                     .foregroundStyle(.white.opacity(0.8))
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,6 +141,7 @@ struct TavernView: View {
                                         .cornerRadius(12)
                                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [5])))
                                     }
+                                    .popoverTip(createCharTip, arrowEdge: .bottom)
                                     
                                     // B. 內建說書人
                                     ForEach(presets, id: \.name) { storyteller in
@@ -153,7 +179,14 @@ struct TavernView: View {
             }
             .accentColor(.orange)
         }
+        .onAppear {
+            // 如果 customStorytellers 陣列不為空，表示已經有建立過角色
+            if !gameManager.customStorytellers.isEmpty {
+                CreateCharacterTip.hasCustomCharacter = true
+            }
+        }
     }
+   
     
     // 輔助視圖：卡片樣式
     struct StorytellerCard: View {
