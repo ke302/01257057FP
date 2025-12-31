@@ -56,7 +56,7 @@ struct SettingsView: View {
                                 }
                         }
                     }
-                    Divider().padding(.vertical, 5)
+                    
                     // 2. 語速調整
                     VStack(alignment: .leading) {
                         HStack {

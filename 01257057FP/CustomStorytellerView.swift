@@ -7,6 +7,7 @@
 import SwiftUI
 import PhotosUI
 import TipKit
+import SwiftData
 
 struct ColorSoulTip: Tip {
     var title: Text { Text("什麼是靈魂顏色？") }
@@ -17,6 +18,7 @@ struct CustomStorytellerView: View {
     // 這裡用 Bindable 才能寫入新角色到 Manager
     @Bindable var gameManager: StoryManager
     @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
     
     // 暫存的新角色資料
     @State private var tempName: String = ""
@@ -119,17 +121,16 @@ struct CustomStorytellerView: View {
                     // 3. 確認按鈕 (不再是 NavigationLink)
                     Button(action: {
                         // 建立新角色物件
-                        let newStoryteller = StorytellerInfo(
+                        let newItem = StorytellerItem(
                             name: tempName,
                             genre: selectedGenre,
-                            iconName: "person.fill", // 預設圖示
+                            iconName: "person.fill",
                             avatarData: avatarData,
-                            color: themeColor,
-                            isCustom: true
+                            color: themeColor
                         )
                         
                         // 存入 Manager
-                        gameManager.addCustomStoryteller(newStoryteller)
+                        modelContext.insert(newItem)
                         
                         // 返回酒館
                         dismiss()

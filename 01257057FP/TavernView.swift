@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import TipKit
+import SwiftData
 
 struct MagicOrderTip: Tip {
     var title: Text { Text("點歌小秘訣") }
@@ -29,15 +30,12 @@ struct CreateCharacterTip: Tip {
 }
 
 struct TavernView: View {
-    // 1. 這裡是整個 App 的資料源頭
     @State private var gameManager = StoryManager()
-    
-    // 2. 控制設定頁面
     @State private var showSettings = false
-    
-    // 3. [修正] 補上這行，因為設定頁面需要它
     @State private var themeColor: Color = .brown
-    
+    @Query var savedStorytellers: [StorytellerItem]
+    @Environment(\.modelContext) var context
+    @Environment(\.modelContext) private var modelContext
     // 內建的說書人列表
     let presets = [
         StorytellerInfo(name: "老騎士", genre: "中世紀奇幻", iconName: "shield.righthalf.filled", color: .brown),
@@ -156,14 +154,33 @@ struct TavernView: View {
                                         })
                                     }
                                     // C. 新說書人
-                                    ForEach(gameManager.customStorytellers) { storyteller in
+                                    ForEach(savedStorytellers) { item in
                                         NavigationLink(destination: ContentView(gameManager: gameManager)) {
-                                            StorytellerCard(info: storyteller)
+                                            // 轉成 Info 格式顯示
+                                            StorytellerCard(info: item.toInfo)
                                         }
                                         .simultaneousGesture(TapGesture().onEnded {
-                                            gameManager.currentStoryteller = storyteller
-                                            gameManager.genre = storyteller.genre
+                                            // 轉成 Info 格式傳給 Manager
+                                            gameManager.currentStoryteller = item.toInfo
+                                            gameManager.genre = item.genre
                                         })
+                                        // (選用) 加上刪除功能
+                                        .contextMenu {
+                                            Button(role: .destructive) {
+                                                // 1. 從資料庫刪除該項目
+                                                modelContext.delete(item)
+                                                
+                                                // 2. (選用) 如果被刪除的是當前選中的角色，重置為預設
+                                                if gameManager.currentStoryteller.name == item.name {
+                                                    if let defaultRole = presets.first {
+                                                        gameManager.currentStoryteller = defaultRole
+                                                        gameManager.genre = defaultRole.genre
+                                                    }
+                                                }
+                                            } label: {
+                                                Label("解雇", systemImage: "trash")
+                                            }
+                                        }
                                     }
                                 }
                                 .padding(.horizontal)
@@ -173,17 +190,13 @@ struct TavernView: View {
                     }
                 }
                 .sheet(isPresented: $showSettings) {
-                    // [修正] 這裡補上了 themeColor，錯誤就會消失
                     SettingsView(gameManager: gameManager, themeColor: $themeColor)
                 }
             }
             .accentColor(.orange)
         }
         .onAppear {
-            // 如果 customStorytellers 陣列不為空，表示已經有建立過角色
-            if !gameManager.customStorytellers.isEmpty {
-                CreateCharacterTip.hasCustomCharacter = true
-            }
+            gameManager.startLobbyMusic()
         }
     }
    

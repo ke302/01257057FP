@@ -66,8 +66,6 @@ class StoryManager {
         name: "老騎士", genre: "中世紀奇幻", iconName: "shield.righthalf.filled", color: .brown
     )
     
-    var customStorytellers: [StorytellerInfo] = []
-    
     let contextTool = ContextAwarenessTool()
     let speechManager = SpeechManager()
     
@@ -82,9 +80,6 @@ class StoryManager {
         self.session = LanguageModelSession()
     }
     
-    func addCustomStoryteller(_ info: StorytellerInfo) {
-        customStorytellers.append(info)
-    }
     func checkAvailability() {
         // [重要] 檢查模型狀態
         let model = SystemLanguageModel.default
@@ -151,28 +146,6 @@ class StoryManager {
         4. `options` 固定回傳：['再聽一個']。
         """
         
-        if isBGMEnabled {
-            // 優先使用使用者輸入的關鍵字，如果沒有，就用說書人風格
-            let keyword = userTopic.isEmpty ? currentStoryteller.genre : userTopic
-            
-            // 開一個非同步任務去抓音樂
-            Task {
-                do {
-                    print("正在搜尋 BGM: \(keyword)")
-                    // 1. 從 Pixabay 找音樂網址
-                    if let musicURL = try await musicService.fetchMusicURL(query: keyword) {
-                        // 2. 找到後，切回主執行緒播放
-                        await MainActor.run {
-                            bgmManager.playMusic(from: musicURL)
-                        }
-                    } else {
-                        print("找不到關於 \(keyword) 的音樂")
-                    }
-                } catch {
-                    print("BGM 搜尋失敗: \(error)")
-                }
-            }
-        }
         self.session = LanguageModelSession(tools: [contextTool], instructions: instructions)
         
         currentTask = Task {
@@ -206,7 +179,7 @@ class StoryManager {
         }
         
         var pendingOptions: [String] = []
-        let sentenceDelimiters: CharacterSet = ["。", "！", "？", "\n", "…"]
+        let sentenceDelimiters: CharacterSet = ["。", "！", "？", "\n", "…", "，"]
         
         // [關鍵修正] 用來記錄上一回合處理到第幾個字
         var lastProcessedLength = 0
@@ -286,4 +259,18 @@ class StoryManager {
         }
     }
     
+    func startLobbyMusic() {
+        guard isBGMEnabled else { return }
+        if bgmManager.isPlaying { return }
+        
+    
+        Task {
+            
+            if let url = try? await musicService.fetchMusicURL(query: "Fantasy Tavern") {
+                await MainActor.run {
+                    bgmManager.playMusic(from: url)
+                }
+            }
+        }
+    }
 }

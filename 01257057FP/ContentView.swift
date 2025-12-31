@@ -115,6 +115,7 @@ struct ContentView: View {
                     // 只有當畫面寬度大於 0 時，才載入撒花元件
                     if geo.size.width > 0 {
                         ConfettiCannon(trigger: $confettiCounter, num: 50, confettis: [.text("✨"), .text("🌙"), .shape(.circle)])
+                            .position(x: geo.size.width / 2, y: geo.size.height / 2)
                     }
                 }
                 // 讓這個 GeometryReader 不干擾排版

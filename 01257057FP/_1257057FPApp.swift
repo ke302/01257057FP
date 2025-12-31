@@ -7,13 +7,14 @@
 
 import SwiftUI
 import TipKit
+import SwiftData
 
 @main
 struct _1257057FPApp: App {
     @State private var showMainApp = false
     init() {
         // 開發測試用：每次啟動 App 都重置 Tip 狀態，讓你還能再看到它們
-        // try? Tips.resetDatastore()
+        try? Tips.resetDatastore()
         
         try? Tips.configure([
             .displayFrequency(.immediate), // 設定為立即顯示，不用等
@@ -30,5 +31,6 @@ struct _1257057FPApp: App {
                 SplashView(isActive: $showMainApp)
             }
         }
+        .modelContainer(for: StorytellerItem.self) 
     }
 }
